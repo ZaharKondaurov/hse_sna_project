@@ -3,3 +3,7 @@
 __pycache__/
 __pypackages__/
 .pytest_cache/
+data/*
+*/mlruns/*
+*/runs/*
+*/lightning_logs/*
