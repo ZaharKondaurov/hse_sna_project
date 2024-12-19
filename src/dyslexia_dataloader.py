@@ -62,16 +62,16 @@ class DyslexiaDataset(Dataset):
     def __init__(
         self,
         group_ids: List[str],
-        group_id2grade: Dict[str, int],
+        group_id2group: Dict[str, int],
         width: int,
         height: int,
         images_path: str,
         preprocess: Callable = SIMPLE_PREPROCESS
     ):
-        assert all([gi in group_id2grade for gi in group_ids])
+        assert all([gi in group_id2group for gi in group_ids])
 
         self.group_ids      = group_ids
-        self.group_id2grade = group_id2grade
+        self.group_id2group = group_id2group
         self.width          = width
         self.height         = height
         self.images_path    = images_path
@@ -86,10 +86,11 @@ class DyslexiaDataset(Dataset):
         image_name = f"{group_id}.png"
         image_path = join(self.images_path, image_name)
         image      = load_image(image_path, width=self.width, height=self.height)
-        grade      = self.group_id2grade[group_id]
+        group      = self.group_id2group[group_id]
 
         image = self.preprocess(image)
-        return [image, grade]
+        assert group in (0, 1), f"{image_name}, {group}"
+        return [image, group]
 
 
 class DyslexiaDataModule(pl.LightningDataModule):
@@ -102,31 +103,29 @@ class DyslexiaDataModule(pl.LightningDataModule):
         width: int = 224,
         height: int = 224,
         preprocess: Callable = SIMPLE_PREPROCESS,
-        collate_fn: Callable = collate_fn
+        collate_fn: Callable = collate_fn,
+        images_dir_name: str = "dyslexia_images_small"
     ):
         super().__init__()
 
-        images_path = join(data_path, "dyslexia_images")
-        image_names = [image_name for image_name in sorted(os.listdir(images_path)) if ".png" in image_name]
-        with open(join(data_path, "group_id2grade.json"), "r") as iofile:
-            group_id2grade = json.load(iofile)
+        images_path = join(data_path, images_dir_name)
+        with open(join(data_path, "group_id2group.json"), "r") as iofile:
+            group_id2group = json.load(iofile)
 
+        image_names = [image_name for image_name in sorted(os.listdir(images_path)) if ".png" in image_name]
+        image_names = [image_name for image_name in image_names if group_id2group[image_name[:-4]] in (0, 1)]
         group_ids = [image_name[:-4] for image_name in image_names]
 
         # shuffling and split
         train_group_ids, val_group_ids, test_group_ids = get_train_val_test_paths(group_ids, train_frac, val_frac)
 
         self.batch_size = batch_size
-        self.data_path  = data_path
-        self.train_frac = train_frac
-        self.val_frac   = val_frac
-        self.test_frac  = 1 - train_frac - val_frac
         self.width      = width
         self.height     = height
         self.preprocess = preprocess
         self.collate_fn = collate_fn
 
-        args = (group_id2grade, width, height, images_path, preprocess)
+        args = (group_id2group, width, height, images_path, preprocess)
         self.ds_train = DyslexiaDataset(train_group_ids, *args)
         self.ds_val   = DyslexiaDataset(val_group_ids, *args)
         self.ds_test  = DyslexiaDataset(test_group_ids, *args)
